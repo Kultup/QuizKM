@@ -5,66 +5,150 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
+        :root {
+            --primary-color: #4CAF50;
+            --secondary-color: #2196F3;
+            --error-color: #f44336;
+            --success-color: #4CAF50;
+            --background-color: #f5f5f5;
+            --text-color: #333;
+            --border-radius: 10px;
+            --box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
         body {
-            font-family: Arial, sans-serif;
+            font-family: 'Segoe UI', Arial, sans-serif;
             margin: 0;
             padding: 20px;
-            background-color: #f0f0f0;
-            color: #333;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            line-height: 1.6;
         }
+
         .container {
             max-width: 600px;
             margin: 0 auto;
             background-color: white;
             padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            border-radius: var(--border-radius);
+            box-shadow: var(--box-shadow);
         }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+            padding: 10px;
+            background-color: var(--primary-color);
+            color: white;
+            border-radius: var(--border-radius);
+        }
+
         .question {
             margin-bottom: 20px;
-            padding: 15px;
-            background-color: #f9f9f9;
-            border-radius: 5px;
+            padding: 20px;
+            background-color: white;
+            border-radius: var(--border-radius);
+            box-shadow: var(--box-shadow);
         }
+
+        .question h3 {
+            color: var(--primary-color);
+            margin-top: 0;
+        }
+
         .options {
-            display: flex;
-            flex-direction: column;
+            display: grid;
+            grid-template-columns: 1fr;
             gap: 10px;
+            margin-top: 15px;
         }
+
         .option {
-            padding: 10px;
-            background-color: #e9e9e9;
-            border: none;
-            border-radius: 5px;
+            padding: 15px;
+            background-color: white;
+            border: 2px solid var(--secondary-color);
+            border-radius: var(--border-radius);
             cursor: pointer;
-            transition: background-color 0.3s;
+            transition: all 0.3s ease;
+            font-size: 16px;
+            text-align: left;
         }
+
         .option:hover {
-            background-color: #d0d0d0;
+            background-color: var(--secondary-color);
+            color: white;
+            transform: translateY(-2px);
         }
+
         .correct {
-            background-color: #90EE90;
+            background-color: var(--success-color) !important;
+            color: white !important;
+            border-color: var(--success-color) !important;
         }
+
         .incorrect {
-            background-color: #FFB6C1;
+            background-color: var(--error-color) !important;
+            color: white !important;
+            border-color: var(--error-color) !important;
         }
+
         .score {
-            font-size: 18px;
+            font-size: 24px;
             font-weight: bold;
+            text-align: center;
             margin-bottom: 20px;
+            color: var(--primary-color);
         }
+
         .explanation {
-            margin-top: 10px;
-            padding: 10px;
-            background-color: #f0f0f0;
-            border-radius: 5px;
+            margin-top: 15px;
+            padding: 15px;
+            background-color: #e8f5e9;
+            border-radius: var(--border-radius);
+            border-left: 4px solid var(--success-color);
             display: none;
+            animation: fadeIn 0.5s ease;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 10px;
+            background-color: #e0e0e0;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+
+        .progress {
+            width: 0%;
+            height: 100%;
+            background-color: var(--primary-color);
+            transition: width 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .timer {
+            text-align: center;
+            font-size: 18px;
+            color: var(--secondary-color);
+            margin-bottom: 15px;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="score">Рахунок: <span id="score">0</span>/5</div>
+        <div class="header">
+            <h2>QuizKM - Навчальна вікторина</h2>
+        </div>
+        <div class="progress-bar">
+            <div class="progress" id="progress"></div>
+        </div>
+        <div class="score">Рахунок: <span id="score">0</span>/10</div>
+        <div class="timer" id="timer">Час: 30</div>
         <div id="question-container"></div>
     </div>
 
@@ -74,13 +158,138 @@
         
         let currentQuestion = 0;
         let score = 0;
-        let questions = [];
+        let timeLeft = 30;
+        let timer;
+        let questions = [
+            {
+                text: "Як правильно сервірувати вино?",
+                options: [
+                    "Спочатку наливаємо невелику кількість для дегустації",
+                    "Наливаємо повний бокал одразу",
+                    "Наливаємо до половини бокалу",
+                    "Наливаємо до краю бокалу"
+                ],
+                correct_answer: "Спочатку наливаємо невелику кількість для дегустації",
+                explanation: "Сервірування вина починається з наливання невеликої кількості для дегустації. Після схвалення клієнтом наливаємо повний бокал на 1/3."
+            },
+            {
+                text: "Які страви входять до постного меню?",
+                options: [
+                    "Грибна юшка, овочеві салати, рибні страви",
+                    "М'ясні страви, молочні продукти",
+                    "Страви з яєць та молока",
+                    "Страви з морепродуктів та м'яса"
+                ],
+                correct_answer: "Грибна юшка, овочеві салати, рибні страви",
+                explanation: "Постне меню включає страви без м'яса та молочних продуктів. Дозволені овочі, гриби, риба та морепродукти."
+            },
+            {
+                text: "Що робити при пожежі в ресторані?",
+                options: [
+                    "Викликати пожежну службу та евакуювати відвідувачів",
+                    "Спочатку спробувати загасити самостійно",
+                    "Чекати інструкцій від адміністратора",
+                    "Продовжувати обслуговування клієнтів"
+                ],
+                correct_answer: "Викликати пожежну службу та евакуювати відвідувачів",
+                explanation: "При виявленні пожежі необхідно негайно викликати пожежну службу (101), сповістити адміністратора та почати евакуацію відвідувачів."
+            },
+            {
+                text: "Яка температура для приготування стейку medium rare?",
+                options: [
+                    "54-57°C",
+                    "60-63°C",
+                    "48-51°C",
+                    "65-68°C"
+                ],
+                correct_answer: "54-57°C",
+                explanation: "Стейк medium rare готується при температурі 54-57°C. При цій температурі м'ясо має червоно-рожевий колір всередині."
+            },
+            {
+                text: "Як правильно вітати відвідувачів?",
+                options: [
+                    "Доброго дня! Раді вас бачити!",
+                    "Привіт! Що будете замовляти?",
+                    "Добро пожаловать!",
+                    "Вітаю! Що потрібно?"
+                ],
+                correct_answer: "Доброго дня! Раді вас бачити!",
+                explanation: "Вітання має бути щирим та дружнім. Важливо зробити акцент на тому, що ми раді бачити відвідувача в нашому ресторані."
+            },
+            {
+                text: "Як правильно сервірувати суп?",
+                options: [
+                    "Зліва від гостя, ручкою до нього",
+                    "Справа від гостя",
+                    "По центру столу",
+                    "Біля тарілки зліва"
+                ],
+                correct_answer: "Зліва від гостя, ручкою до нього",
+                explanation: "Суп сервірується зліва від гостя, ручкою до нього, щоб він міг зручно взяти тарілку."
+            },
+            {
+                text: "Які види вина подаються до риби?",
+                options: [
+                    "Біле сухе вино",
+                    "Червоне вино",
+                    "Рожеве вино",
+                    "Ігриста вода"
+                ],
+                correct_answer: "Біле сухе вино",
+                explanation: "До рибних страв традиційно подається біле сухе вино, оскільки воно підкреслює смак риби та не перебиває його."
+            },
+            {
+                text: "Як правильно розміщувати столові прибори?",
+                options: [
+                    "Ножі справа, виделки зліва",
+                    "Всі прибори справа",
+                    "Всі прибори зліва",
+                    "Виделки справа, ножі зліва"
+                ],
+                correct_answer: "Ножі справа, виделки зліва",
+                explanation: "Столові прибори розміщуються за правилом: ножі та ложки справа від тарілки, виделки зліва."
+            },
+            {
+                text: "Як правильно сервірувати каву?",
+                options: [
+                    "Справа від гостя, ручкою до нього",
+                    "Зліва від гостя",
+                    "По центру столу",
+                    "Біля тарілки зліва"
+                ],
+                correct_answer: "Справа від гостя, ручкою до нього",
+                explanation: "Каву сервірують справа від гостя, ручкою до нього, щоб він міг зручно взяти чашку."
+            },
+            {
+                text: "Як правильно приймати замовлення?",
+                options: [
+                    "Записувати, повторювати та уточнювати деталі",
+                    "Запам'ятовувати на слух",
+                    "Записувати без повторення",
+                    "Приймати замовлення без уточнень"
+                ],
+                correct_answer: "Записувати, повторювати та уточнювати деталі",
+                explanation: "При прийомі замовлення важливо записувати його, повторювати клієнту та уточнювати всі деталі для уникнення помилок."
+            }
+        ];
         
-        // Отримання питань від бота
-        tg.onEvent('web_app_data_send', function(data) {
-            questions = data.questions;
-            showQuestion();
-        });
+        function startTimer() {
+            timeLeft = 30;
+            clearInterval(timer);
+            timer = setInterval(() => {
+                timeLeft--;
+                document.getElementById('timer').textContent = `Час: ${timeLeft}`;
+                if (timeLeft <= 0) {
+                    clearInterval(timer);
+                    nextQuestion();
+                }
+            }, 1000);
+        }
+        
+        function updateProgress() {
+            const progress = ((currentQuestion + 1) / questions.length) * 100;
+            document.getElementById('progress').style.width = `${progress}%`;
+        }
         
         function showQuestion() {
             if (currentQuestion >= questions.length) {
@@ -97,29 +306,36 @@
             
             container.innerHTML = `
                 <div class="question">
-                    <h3>Питання ${currentQuestion + 1}/5:</h3>
+                    <h3>Питання ${currentQuestion + 1}/10:</h3>
                     <p>${question.text}</p>
                     <div class="options">
-                        <button class="option" onclick="checkAnswer('${question.correct_answer}')">
-                            ${question.correct_answer}
-                        </button>
+                        ${question.options.map(option => `
+                            <button class="option" onclick="checkAnswer('${option}')">
+                                ${option}
+                            </button>
+                        `).join('')}
                     </div>
                     <div class="explanation" id="explanation">
                         ${question.explanation}
                     </div>
                 </div>
             `;
+            
+            updateProgress();
+            startTimer();
         }
         
         function checkAnswer(answer) {
             const question = questions[currentQuestion];
             const buttons = document.getElementsByClassName('option');
             
+            clearInterval(timer);
+            
             for (let button of buttons) {
                 button.disabled = true;
                 if (button.textContent === question.correct_answer) {
                     button.classList.add('correct');
-                } else {
+                } else if (button.textContent === answer) {
                     button.classList.add('incorrect');
                 }
             }
@@ -136,6 +352,9 @@
                 showQuestion();
             }, 2000);
         }
+        
+        // Початок гри
+        showQuestion();
     </script>
 </body>
 </html> 
