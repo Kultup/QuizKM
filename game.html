@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>QuizKM - Навчальна вікторина</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f0f0;
+            color: #333;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .question {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-radius: 5px;
+        }
+        .options {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .option {
+            padding: 10px;
+            background-color: #e9e9e9;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .option:hover {
+            background-color: #d0d0d0;
+        }
+        .correct {
+            background-color: #90EE90;
+        }
+        .incorrect {
+            background-color: #FFB6C1;
+        }
+        .score {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }
+        .explanation {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #f0f0f0;
+            border-radius: 5px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="score">Рахунок: <span id="score">0</span>/5</div>
+        <div id="question-container"></div>
+    </div>
+
+    <script>
+        let tg = window.Telegram.WebApp;
+        tg.expand();
+        
+        let currentQuestion = 0;
+        let score = 0;
+        let questions = [];
+        
+        // Отримання питань від бота
+        tg.onEvent('web_app_data_send', function(data) {
+            questions = data.questions;
+            showQuestion();
+        });
+        
+        function showQuestion() {
+            if (currentQuestion >= questions.length) {
+                // Гра завершена
+                tg.sendData(JSON.stringify({
+                    type: 'game_complete',
+                    score: score
+                }));
+                return;
+            }
+            
+            const question = questions[currentQuestion];
+            const container = document.getElementById('question-container');
+            
+            container.innerHTML = `
+                <div class="question">
+                    <h3>Питання ${currentQuestion + 1}/5:</h3>
+                    <p>${question.text}</p>
+                    <div class="options">
+                        <button class="option" onclick="checkAnswer('${question.correct_answer}')">
+                            ${question.correct_answer}
+                        </button>
+                    </div>
+                    <div class="explanation" id="explanation">
+                        ${question.explanation}
+                    </div>
+                </div>
+            `;
+        }
+        
+        function checkAnswer(answer) {
+            const question = questions[currentQuestion];
+            const buttons = document.getElementsByClassName('option');
+            
+            for (let button of buttons) {
+                button.disabled = true;
+                if (button.textContent === question.correct_answer) {
+                    button.classList.add('correct');
+                } else {
+                    button.classList.add('incorrect');
+                }
+            }
+            
+            if (answer === question.correct_answer) {
+                score++;
+                document.getElementById('score').textContent = score;
+            }
+            
+            document.getElementById('explanation').style.display = 'block';
+            
+            setTimeout(() => {
+                currentQuestion++;
+                showQuestion();
+            }, 2000);
+        }
+    </script>
+</body>
+</html> 
