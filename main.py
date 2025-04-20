@@ -1,10 +1,10 @@
 import os
 import logging
+import asyncio
 from datetime import datetime, time
 from dotenv import load_dotenv
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from database import init_db, get_session
 from models import User, Question, UserAnswer
 from sqlalchemy import select, func
@@ -24,55 +24,86 @@ TOKEN = os.getenv('TELEGRAM_TOKEN')
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обробник команди /start"""
-    keyboard = [
-        [InlineKeyboardButton("Реєстрація", callback_data='register')],
-        [InlineKeyboardButton("Щоденний тест", callback_data='daily_test')],
-        [InlineKeyboardButton("Статистика", callback_data='stats')],
-        [InlineKeyboardButton("База знань", callback_data='knowledge_base')]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(
-        "Вітаю! Я бот для навчання персоналу Країна Мрій. "
-        "Оберіть опцію:",
-        reply_markup=reply_markup
-    )
-
-async def register_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обробник реєстрації користувача"""
-    query = update.callback_query
-    await query.answer()
-    
-    await query.message.reply_text(
-        "Будь ласка, введіть ваші дані у форматі:\n"
-        "ПІБ, Місто, Посада"
-    )
-    context.user_data['state'] = 'waiting_registration'
+    # Перевіряємо чи користувач вже зареєстрований
+    async for session in get_session():
+        user = await session.execute(select(User).filter(User.telegram_id == update.effective_user.id))
+        user = user.scalar_one_or_none()
+        
+        if user:
+            # Якщо користувач вже зареєстрований, показуємо головне меню
+            keyboard = [
+                ["📝 Щоденний тест"],
+                ["📊 Статистика", "📚 База знань"],
+                ["🎮 Почати гру"]
+            ]
+            reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+            await update.message.reply_text(
+                "Вітаю! Я бот для навчання персоналу Країна Мрій. Оберіть опцію:",
+                reply_markup=reply_markup
+            )
+        else:
+            # Якщо користувач не зареєстрований, починаємо реєстрацію
+            await update.message.reply_text(
+                "Вітаю! Для початку роботи потрібно зареєструватися.\n"
+                "Будь ласка, введіть ваше ім'я:"
+            )
+            context.user_data['registration_step'] = 'name'
 
 async def handle_registration(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обробник введених даних реєстрації"""
-    if context.user_data.get('state') != 'waiting_registration':
+    """Обробник покрокової реєстрації"""
+    step = context.user_data.get('registration_step')
+    
+    if not step:
         return
-
-    try:
-        full_name, city, position = [x.strip() for x in update.message.text.split(',')]
-        async for session in get_session():
-            user = User(
-                telegram_id=update.effective_user.id,
-                full_name=full_name,
-                city=city,
-                position=position
-            )
-            session.add(user)
-            await session.commit()
+        
+    if step == 'name':
+        context.user_data['name'] = update.message.text
+        await update.message.reply_text("Тепер введіть ваше прізвище:")
+        context.user_data['registration_step'] = 'surname'
+        
+    elif step == 'surname':
+        context.user_data['surname'] = update.message.text
+        await update.message.reply_text("Введіть вашу посаду:")
+        context.user_data['registration_step'] = 'position'
+        
+    elif step == 'position':
+        context.user_data['position'] = update.message.text
+        await update.message.reply_text("Введіть назву закладу:")
+        context.user_data['registration_step'] = 'establishment'
+        
+    elif step == 'establishment':
+        try:
+            # Зберігаємо всі дані в базу
+            full_name = f"{context.user_data['name']} {context.user_data['surname']}"
+            async for session in get_session():
+                user = User(
+                    telegram_id=update.effective_user.id,
+                    full_name=full_name,
+                    city=update.message.text,  # Використовуємо назву закладу як місто
+                    position=context.user_data['position']
+                )
+                session.add(user)
+                await session.commit()
             
-        await update.message.reply_text(
-            "Реєстрація успішна! Тепер ви можете проходити щоденні тести."
-        )
-        context.user_data['state'] = None
-    except Exception as e:
-        await update.message.reply_text(
-            "Помилка при реєстрації. Будь ласка, перевірте формат введення даних."
-        )
+            # Показуємо головне меню
+            keyboard = [
+                ["📝 Щоденний тест"],
+                ["📊 Статистика", "📚 База знань"],
+                ["🎮 Почати гру"]
+            ]
+            reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+            await update.message.reply_text(
+                "Реєстрація успішна! Тепер ви можете користуватися всіма функціями бота.",
+                reply_markup=reply_markup
+            )
+            
+            # Очищаємо дані реєстрації
+            context.user_data.clear()
+        except Exception as e:
+            await update.message.reply_text(
+                "Помилка при реєстрації. Будь ласка, спробуйте ще раз, використовуючи команду /start"
+            )
+            context.user_data.clear()
 
 async def send_daily_questions():
     """Відправка щоденних питань"""
@@ -268,36 +299,10 @@ async def handle_suggestion(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def start_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Запуск HTML5 гри"""
-    query = update.callback_query
-    await query.answer()
-    
-    async for session in get_session():
-        # Отримання випадкових питань
-        questions = await session.execute(
-            select(Question).order_by(func.random()).limit(5)
-        )
-        questions = questions.scalars().all()
-        
-        # Підготовка питань для гри
-        game_questions = []
-        for q in questions:
-            game_questions.append({
-                'text': q.text,
-                'correct_answer': q.correct_answer,
-                'explanation': q.explanation
-            })
-        
-        # Створення кнопки для запуску гри
-        keyboard = [[InlineKeyboardButton("Почати гру", web_app=WebAppInfo(url="https://kultup.github.io/QuizKM/game.html"))]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await query.message.reply_text(
-            "Натисніть кнопку, щоб почати гру:",
-            reply_markup=reply_markup
-        )
-        
-        # Збереження питань в контексті користувача
-        context.user_data['game_questions'] = game_questions
+    # Відправляємо повідомлення з інструкцією
+    await update.message.reply_text(
+        "Для початку гри натисніть на кнопку меню 'QuizKM' у нижній частині екрану."
+    )
 
 async def handle_game_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обробка результатів гри"""
@@ -309,52 +314,103 @@ async def handle_game_result(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if data['type'] == 'game_complete':
         score = data['score']
         
-        async for session in get_session():
-            user = await session.execute(select(User).filter(User.telegram_id == update.effective_user.id))
-            user = user.scalar_one_or_none()
+        session = get_session()
+        user = session.query(User).filter(User.telegram_id == update.effective_user.id).first()
+        
+        if user:
+            # Оновлення статистики
+            user.daily_score = score
+            user.total_score += score
+            session.commit()
             
-            if user:
-                # Оновлення статистики
-                user.daily_score = score
-                user.total_score += score
-                await session.commit()
-                
-                await update.message.reply_text(
-                    f"Гра завершена! Ваш рахунок: {score}/5\n"
-                    f"Загальний рахунок: {user.total_score}"
-                )
+            await update.message.reply_text(
+                f"Гра завершена! Ваш рахунок: {score}/5\n"
+                f"Загальний рахунок: {user.total_score}"
+            )
 
-async def main():
+async def send_daily_questions_periodically():
+    """Періодична відправка щоденних питань"""
+    while True:
+        now = datetime.now().time()
+        target_time = time(hour=12, minute=0)
+        
+        if now.hour == target_time.hour and now.minute == target_time.minute:
+            await send_daily_questions()
+            # Чекаємо 24 години
+            await asyncio.sleep(24 * 60 * 60)
+        else:
+            # Перевіряємо кожну хвилину
+            await asyncio.sleep(60)
+
+def main():
     """Запуск бота"""
-    # Ініціалізація бази даних
-    await init_db()
-    
     # Створення додатку
     application = Application.builder().token(TOKEN).build()
     
     # Додавання обробників
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CallbackQueryHandler(register_user, pattern='^register$'))
-    application.add_handler(CallbackQueryHandler(handle_answer, pattern='^answer_'))
-    application.add_handler(CallbackQueryHandler(show_explanation, pattern='^explain_'))
-    application.add_handler(CallbackQueryHandler(show_stats, pattern='^stats$'))
-    application.add_handler(CallbackQueryHandler(show_knowledge_base, pattern='^knowledge_base$'))
-    application.add_handler(CallbackQueryHandler(show_knowledge_category, pattern='^kb_'))
-    application.add_handler(CallbackQueryHandler(start_feedback, pattern='^feedback$'))
-    application.add_handler(CallbackQueryHandler(handle_feedback, pattern='^feedback_'))
-    application.add_handler(CallbackQueryHandler(start_game, pattern='^start_game$'))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_registration))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_suggestion))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, handle_game_result))
     
-    # Налаштування планувача
-    scheduler = AsyncIOScheduler()
-    scheduler.add_job(send_daily_questions, 'cron', hour=12)
-    scheduler.start()
-    
     # Запуск бота
-    await application.run_polling()
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обробник текстових повідомлень"""
+    text = update.message.text
+    
+    if text == "📝 Щоденний тест":
+        # Логіка для щоденного тесту
+        await send_daily_questions()
+    elif text == "📊 Статистика":
+        # Показ статистики
+        async for session in get_session():
+            user = await session.execute(select(User).filter(User.telegram_id == update.effective_user.id))
+            user = user.scalar_one_or_none()
+            
+            if user:
+                stats_text = (
+                    f"Статистика користувача {user.full_name}:\n"
+                    f"Щоденний рахунок: {user.daily_score}\n"
+                    f"Загальний рахунок: {user.total_score}\n"
+                    f"Заклад: {user.city}\n"
+                    f"Посада: {user.position}"
+                )
+                await update.message.reply_text(stats_text)
+    elif text == "📚 База знань":
+        # Показ категорій бази знань
+        keyboard = [
+            ["🍽️ Сервіс", "📋 Меню"],
+            ["🛡️ Безпека", "👨‍🍳 Кулінарія"],
+            ["🎭 Етикет", "⬅️ Назад"]
+        ]
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        await update.message.reply_text("Оберіть категорію:", reply_markup=reply_markup)
+    elif text == "🎮 Почати гру":
+        # Запуск гри
+        await start_game(update, context)
+    elif text == "⬅️ Назад":
+        # Повернення до головного меню
+        keyboard = [
+            ["📝 Щоденний тест"],
+            ["📊 Статистика", "📚 База знань"],
+            ["🎮 Почати гру"]
+        ]
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        await update.message.reply_text("Головне меню:", reply_markup=reply_markup)
 
 if __name__ == '__main__':
-    import asyncio
-    asyncio.run(main()) 
+    try:
+        # Ініціалізація бази даних
+        asyncio.run(init_db())
+        
+        # Запуск періодичної відправки питань в окремому потоці
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.create_task(send_daily_questions_periodically())
+        
+        # Запуск бота
+        main()
+    except KeyboardInterrupt:
+        print('Бот зупинений') 
