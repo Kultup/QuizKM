@@ -299,34 +299,76 @@ async def handle_suggestion(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def start_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Запуск HTML5 гри"""
-    # Відправляємо повідомлення з інструкцією
-    await update.message.reply_text(
-        "Для початку гри натисніть на кнопку меню 'QuizKM' у нижній частині екрану."
-    )
+    # Отримуємо випадкові питання з бази даних
+    async for session in get_session():
+        questions = await session.execute(
+            select(Question).order_by(func.random()).limit(5)
+        )
+        questions = questions.scalars().all()
+        
+        # Формуємо дані для гри
+        game_data = {
+            "questions": [
+                {
+                    "text": q.text,
+                    "correct_answer": q.correct_answer,
+                    "explanation": q.explanation
+                } for q in questions
+            ]
+        }
+        
+        # Створюємо кнопку для запуску гри
+        keyboard = [[KeyboardButton(
+            text="🎮 Почати гру",
+            web_app=WebAppInfo(url="https://kultup.github.io/QuizKM/index.html")
+        )]]
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        
+        # Відправляємо повідомлення з кнопкою та даними для гри
+        await update.message.reply_text(
+            "Натисніть кнопку нижче, щоб почати гру:",
+            reply_markup=reply_markup
+        )
+        
+        # Зберігаємо дані гри в контексті користувача
+        context.user_data['game_data'] = game_data
 
 async def handle_game_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обробка результатів гри"""
     if not update.message or not update.message.web_app_data:
         return
     
-    data = json.loads(update.message.web_app_data.data)
-    
-    if data['type'] == 'game_complete':
-        score = data['score']
+    try:
+        data = json.loads(update.message.web_app_data.data)
         
-        session = get_session()
-        user = session.query(User).filter(User.telegram_id == update.effective_user.id).first()
-        
-        if user:
-            # Оновлення статистики
-            user.daily_score = score
-            user.total_score += score
-            session.commit()
+        if data['type'] == 'game_complete':
+            score = data['score']
             
-            await update.message.reply_text(
-                f"Гра завершена! Ваш рахунок: {score}/5\n"
-                f"Загальний рахунок: {user.total_score}"
-            )
+            async for session in get_session():
+                user = await session.execute(
+                    select(User).filter(User.telegram_id == update.effective_user.id)
+                )
+                user = user.scalar_one_or_none()
+                
+                if user:
+                    # Оновлення статистики
+                    user.daily_score = score
+                    user.total_score += score
+                    await session.commit()
+                    
+                    await update.message.reply_text(
+                        f"Гра завершена! Ваш рахунок: {score}/5\n"
+                        f"Загальний рахунок: {user.total_score}"
+                    )
+                else:
+                    await update.message.reply_text(
+                        "Помилка: користувач не знайдений. Будь ласка, зареєструйтесь спочатку."
+                    )
+    except Exception as e:
+        logger.error(f"Помилка при обробці результатів гри: {e}")
+        await update.message.reply_text(
+            "Виникла помилка при обробці результатів гри. Будь ласка, спробуйте ще раз."
+        )
 
 async def send_daily_questions_periodically():
     """Періодична відправка щоденних питань"""
