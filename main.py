@@ -302,7 +302,7 @@ async def start_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Отримуємо випадкові питання з бази даних
     async for session in get_session():
         questions = await session.execute(
-            select(Question).order_by(func.random()).limit(5)
+            select(Question).order_by(func.random()).limit(10)
         )
         questions = questions.scalars().all()
         
@@ -311,6 +311,12 @@ async def start_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "questions": [
                 {
                     "text": q.text,
+                    "options": [
+                        q.correct_answer,
+                        "Неправильна відповідь 1",
+                        "Неправильна відповідь 2",
+                        "Неправильна відповідь 3"
+                    ],
                     "correct_answer": q.correct_answer,
                     "explanation": q.explanation
                 } for q in questions
