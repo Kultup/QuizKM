@@ -323,21 +323,22 @@ async def start_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]
         }
         
+        # Кодуємо дані гри в URL
+        encoded_data = json.dumps(game_data)
+        game_url = f"https://kultup.github.io/QuizKM/index.html?data={encoded_data}"
+        
         # Створюємо кнопку для запуску гри
         keyboard = [[KeyboardButton(
             text="🎮 Почати гру",
-            web_app=WebAppInfo(url="https://kultup.github.io/QuizKM/index.html")
+            web_app=WebAppInfo(url=game_url)
         )]]
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
         
-        # Відправляємо повідомлення з кнопкою та даними для гри
+        # Відправляємо повідомлення з кнопкою
         await update.message.reply_text(
             "Натисніть кнопку нижче, щоб почати гру:",
             reply_markup=reply_markup
         )
-        
-        # Зберігаємо дані гри в контексті користувача
-        context.user_data['game_data'] = game_data
 
 async def handle_game_result(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обробка результатів гри"""

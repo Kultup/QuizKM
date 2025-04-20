@@ -162,11 +162,20 @@
         let timer;
         let questions = [];
         
-        // Отримання питань від бота
-        tg.onEvent('web_app_data_send', function(data) {
-            questions = data.questions;
-            showQuestion();
-        });
+        // Отримання даних з URL
+        function getQuestionsFromURL() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const data = urlParams.get('data');
+            if (data) {
+                try {
+                    const gameData = JSON.parse(data);
+                    questions = gameData.questions;
+                    showQuestion();
+                } catch (e) {
+                    console.error('Помилка при отриманні питань:', e);
+                }
+            }
+        }
         
         function startTimer() {
             timeLeft = 30;
@@ -249,7 +258,7 @@
         }
         
         // Початок гри
-        showQuestion();
+        getQuestionsFromURL();
     </script>
 </body>
 </html> 
