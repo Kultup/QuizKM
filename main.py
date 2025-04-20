@@ -288,7 +288,7 @@ async def start_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
             })
         
         # Створення кнопки для запуску гри
-        keyboard = [[InlineKeyboardButton("Почати гру", web_app=WebAppInfo(url="https://your-username.github.io/quizkm/game.html"))]]
+        keyboard = [[InlineKeyboardButton("Почати гру", web_app=WebAppInfo(url="https://kultup.github.io/QuizKM/game.html"))]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await query.message.reply_text(
